@@ -66,7 +66,7 @@ cluster_start() {
         seed="-s cass1"
         fi
     
-        cmd="./start-node.sh -i $id -v $version $ports $seed ${topologyParameters[$(($id-1))]}"
+        cmd="./node.sh -i $id -v $version $ports $seed ${topologyParameters[$(($id-1))]}"
         echo $cmd
         $cmd
     done
