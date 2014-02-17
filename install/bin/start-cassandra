@@ -3,23 +3,43 @@
 pipework --wait
 dnsmasq
 
-IP=$(grep -w $(hostname) /etc/dnsmasq.d/0hosts | cut -f 3 -d / | sed -e 's/"//g')
+while getopts "n:s:d:" o; do
+    case "${o}" in
+        n)
+            ip=${OPTARG}
+            ;;
+        s)
+            seeds=${OPTARG}
+            ;;
+        d)
+            datacenter=${OPTARG}
+            ;;
+    esac
+done
+shift $((OPTIND-1))
+
+# IP=$(grep -w $(hostname) /etc/dnsmasq.d/0hosts | cut -f 3 -d / | sed -e 's/"//g')
 CONFIG=/root/apache-cassandra/conf/cassandra.yaml
 ENV=/root/apache-cassandra/conf/cassandra-env.sh
+RACKDC=/root/apache-cassandra/conf/cassandra-rackdc.properties
 
 # Change the listen address so that we can communicate with other nodes
-sed -i -e "s/^listen_address.*/listen_address: $IP/"   $CONFIG
+sed -i -e "s/^listen_address.*/listen_address: $ip/"   $CONFIG
 sed -i -e "s/^rpc_address.*/rpc_address: 0.0.0.0/"   $CONFIG
 
 # wait 10 seconds instead of 30
 export JVM_OPTS="-Dcassandra.ring_delay_ms=10000"
 
 # Fix JMX settings
-sed -i -e 's/# JVM_OPTS="$JVM_OPTS -Djava.rmi.server.hostname=<public name>"/JVM_OPTS="$JVM_OPTS -Djava.rmi.server.hostname='$IP'"/g' $ENV
+sed -i -e 's/# JVM_OPTS="$JVM_OPTS -Djava.rmi.server.hostname=<public name>"/JVM_OPTS="$JVM_OPTS -Djava.rmi.server.hostname='$ip'"/g' $ENV
 
-# Fix seeds list for the seed node
-if [[ $(hostname) -eq "cass1" ]]; then
-	sed -i -e 's/seeds: "cass1"/seeds: "192.168.100.1"/g' $CONFIG
+# set seeds
+sed -i -e 's/seeds: "cass1"/seeds: "'$seeds'"/g' $CONFIG
+
+# export DC metadata if passed in, and switch to GPFSnitch
+if [ -n "${datacenter}" ]; then
+    sed -i -e "s/^dc=.*/dc=${datacenter}/g" $RACKDC
+    sed -i -e "s/endpoint_snitch: .*/endpoint_snitch: GossipingPropertyFileSnitch/" $CONFIG
 fi
 
 /root/apache-cassandra/bin/cassandra -f
